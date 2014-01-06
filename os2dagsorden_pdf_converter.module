@@ -1,0 +1,83 @@
+<?php
+
+/**
+ * os2dagsorden_pdf_converter
+ *
+ * PHP version 5
+ *
+ * @category OS2Dagsorden
+ * @package  os2dagsorden_pdf_converter
+ * @author   Konstantin Sepp <ks@bellcom.dk>
+ * @license  http://www.gnu.org/licenses/gpl-2.0.html GNU General Public License, version 2
+ * @link     http://bellcom.dk
+ */
+
+require 'lib/PDFConverter.php';
+/**
+ * Cron implementation.
+ * Goes through the entries in database table, converts files in directories to PDF
+ */
+function os2dagsorden_pdf_converter_cron() {
+    $allowed_extensions = PDFConverter::getAllowedExtenstions();
+    //fetch all rows that does not have Completed status
+    $result = db_query("SELECT * FROM {os2dagsorden_pdf_converter_directories} WHERE progress is null or progress <> 'Completed'");
+    //loop through all rows
+    foreach ($result as $r) {
+        //check if dir exists
+        if(is_dir($r->dirname)){
+            //drupal_set_message($r->dirname);
+            // Loop trough all files in the directory, only files of specific type allowed by the PDFConverter.
+            foreach (getFilesList($r->dirname, '/.*\.(' . implode('|', $allowed_extensions) . ')$/i') as $file) {
+                // Replaces the extension with ".pdf".
+                $pdf_file = preg_replace('/\.(' . implode('|', $allowed_extensions) . ')$/i', '.pdf', $file);
+                if (!file_exists($pdf_file)) {
+                    try {
+                        $file = new PDFConverter($file);
+                        if (!$file->convert()) {
+                            drupal_set_message($file->file . ' was not converted to pdf.');
+                        }
+                    }
+                    catch(Exception $e) {
+                        error_log($e->getMessage());
+                    }
+                }
+            }
+            //update status to completed
+            db_update('os2dagsorden_pdf_converter_directories')
+                ->fields(array("progress" => "Completed"))
+                ->condition('id', $r->id)
+                ->execute();
+        }
+        else{
+            //if is not a directory
+            //update status to not found.
+            drupal_set_message($r->dirname . " is not a dir");
+            db_update('os2dagsorden_pdf_converter_directories')
+                ->fields(array("progress" => "Not found"))
+                ->condition('id', $r->id)
+                ->execute();
+
+        }
+    }
+}
+/**
+ * Get a list of all matched files in folder. Recursivly.
+ *
+ * @param string $folder
+ *   the folder
+ * @param string $pattern
+ *   regex pattern to search for
+ *
+ * @return array
+ *   array of file paths
+ */
+function getFilesList($folder, $pattern) {
+    $dir = new RecursiveDirectoryIterator($folder);
+    $ite = new RecursiveIteratorIterator($dir);
+    $files = new RegexIterator($ite, $pattern, RegexIterator::GET_MATCH);
+    $file_list = array();
+    foreach ($files as $file) {
+        $file_list[] = $file[0];
+    }
+    return $file_list;
+}
