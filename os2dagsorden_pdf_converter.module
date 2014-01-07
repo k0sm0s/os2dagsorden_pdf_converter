@@ -60,6 +60,32 @@ function os2dagsorden_pdf_converter_cron() {
         }
     }
 }
+
+/**
+ * Insert record to database for directory conversion
+ *
+ * @param string $dirpath
+ *  directory path to insert into database
+ */
+function os2dagsorden_pdf_converter_add_dir($dirpath){
+
+    //check if record allready exists
+    $result = db_select("os2dagsorden_pdf_converter_directories", "t")
+        ->fields("t")
+        ->condition("dirname", $dirpath, "like")
+        ->range(0,1)
+        ->execute()
+        ->rowCount();
+
+    //insert to database if not exists
+    if(!$result){
+        db_insert("os2dagsorden_pdf_converter_directories")
+            ->fields(array("dirname" => $dirpath))
+            ->execute();
+    }
+}
+
+
 /**
  * Get a list of all matched files in folder. Recursivly.
  *
